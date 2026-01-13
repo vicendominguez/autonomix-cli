@@ -46,13 +46,6 @@ nfpms:
       - archlinux
     
     bindir: /usr/bin
-    
-    contents:
-      - src: ./config/config.json
-        dst: /etc/autonomix/config.json
-        type: config|noreplace
-        file_info:
-          mode: 0644
 
 release:
   github:
