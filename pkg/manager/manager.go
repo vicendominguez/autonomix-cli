@@ -17,6 +17,18 @@ type AddResult struct {
 
 // AddApp handles the logic of adding a new repository to the configuration
 func AddApp(cfg *config.Config, repoURL string) (*AddResult, error) {
+	// Clean the URL to bare repo URL
+	// E.g. https://github.com/owner/repo/releases -> https://github.com/owner/repo
+	if strings.Contains(repoURL, "github.com") {
+		parts := strings.Split(repoURL, "github.com/")
+		if len(parts) == 2 {
+			pathParts := strings.Split(strings.Trim(parts[1], "/"), "/")
+			if len(pathParts) >= 2 {
+				repoURL = "https://github.com/" + pathParts[0] + "/" + pathParts[1]
+			}
+		}
+	}
+
 	// Check if already exists
 	for _, app := range cfg.Apps {
 		if strings.EqualFold(app.RepoURL, repoURL) {
