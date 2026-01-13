@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -10,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/tim/autonomix-cli/config"
 	"github.com/tim/autonomix-cli/pkg/github"
-	"github.com/tim/autonomix-cli/pkg/system"
+	"github.com/tim/autonomix-cli/pkg/manager"
 )
 
 var (
@@ -97,6 +96,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.KeyEnter:
 				url := m.input.Value()
 				if url != "" {
+					// Optimistically clear input
+					m.input.Reset()
 					return m, checkRepoArgCmd(url)
 				}
 				m.state = viewList
@@ -112,6 +113,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.state == viewList {
+			// Clear error if any key pressed
+			if m.err != nil {
+				m.err = nil
+				return m, nil
+			}
+
 			switch msg.String() {
 			case "ctrl+c", "q":
 				m.quitting = true
@@ -147,39 +154,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // potentially show error
 		}
 		
-		// Determine a good name for the app
-		// Prefer repo name as it is most likely the package name
-		parts := strings.Split(msg.repoURL, "/")
-		repoName := ""
-		if len(parts) > 0 {
-			repoName = parts[len(parts)-1]
-		}
-
-		// Use Release Name only if it looks like a real name, otherwise repo name
-		appName := msg.release.Name
-		if appName == "" || strings.HasPrefix(appName, "v") || strings.Contains(strings.ToLower(appName), "release") {
-			appName = repoName
-		}
+		// Logic moved to manager, but here we need to insert into list
+		// Re-load config or just use the data returned? 
+		// The Msg now needs to return the added app, not just the release.
 		
-		newApp := config.App{
-			Name:    appName,
-			RepoURL: msg.repoURL,
-			Latest:  msg.release.TagName,
-		}
-
-		// Check if installed locally
-		// Try the determined app name, then fallback to repoName
-		if ver, installed := system.CheckInstalled(newApp.Name); installed {
-			newApp.Version = ver
-		} else if repoName != "" && repoName != newApp.Name {
-			if ver, installed := system.CheckInstalled(repoName); installed {
-				newApp.Version = ver
-			}
-		}
-
-		m.config.Apps = append(m.config.Apps, newApp)
-		config.Save(m.config)
-		m.list.InsertItem(len(m.list.Items()), item{app: newApp})
+		m.config.Apps = append(m.config.Apps, msg.app)
+		// Config is already saved by manager in the logic below (see checkRepoArgCmd)
+		
+		m.list.InsertItem(len(m.list.Items()), item{app: msg.app})
 		m.state = viewList
 		m.input.Reset()
 		return m, nil
@@ -209,6 +191,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	if m.err != nil {
+		return fmt.Sprintf("\n  Error: %v\n\n  Press any key to continue...", m.err)
+	}
+
 	if m.state == viewAdd {
 		return fmt.Sprintf(
 			"Enter GitHub Repo URL:\n\n%s\n\n(esc to cancel)\n",
@@ -221,15 +207,34 @@ func (m Model) View() string {
 // Commands and Messages
 
 type repoCheckedMsg struct {
-	repoURL string
-	release *github.Release
-	err     error
+	app config.App
+	err error
 }
 
 func checkRepoArgCmd(url string) tea.Cmd {
 	return func() tea.Msg {
-		rel, err := github.GetLatestRelease(url)
-		return repoCheckedMsg{repoURL: url, release: rel, err: err}
+		// We need to load config first to pass to manager, 
+		// but Model has it. Accessing Model from Cmd is hard.
+		// However, we can just load it again or pass it...
+		// Simplified: We actually just want the logic to run.
+		// BUT: Manager saves the config. The Model has an in-memory copy.
+		// We should probably NOT save in manager if called from TUI? 
+		// Or we reload config in TUI?
+		
+		// Let's modify the flow.
+		// The TUI should call the manager.
+		
+		cfg, err := config.Load() 
+		if err != nil {
+			return repoCheckedMsg{err: err}
+		}
+		
+		res, err := manager.AddApp(cfg, url)
+		if err != nil {
+			return repoCheckedMsg{err: err}
+		}
+		
+		return repoCheckedMsg{app: res.App, err: nil}
 	}
 }
 
