@@ -281,6 +281,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = viewSelectAsset
 		m.status = ""
 		m.selectedApp = &msg.app
+		// Update the app's Latest field in config now that we fetched it
+		for idx, app := range m.config.Apps {
+			if app.RepoURL == msg.app.RepoURL {
+				m.config.Apps[idx].Latest = msg.app.Latest
+				config.Save(m.config)
+				break
+			}
+		}
 		return m, nil
 
 	case repoCheckedMsg:
@@ -349,10 +357,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	
 	case installedRecheckedMsg:
-		// Update the app's version in config and list
+		// Update the app's version and latest in config and list
 		for idx, app := range m.config.Apps {
 			if app.RepoURL == msg.app.RepoURL {
 				m.config.Apps[idx].Version = msg.version
+				// Also update Latest to ensure we have the correct release tag
+				if msg.latest != "" {
+					m.config.Apps[idx].Latest = msg.latest
+				}
 				config.Save(m.config)
 				// Update list item
 				cmd = m.list.SetItem(idx, item{app: m.config.Apps[idx]})
@@ -428,9 +440,10 @@ func checkRepoArgCmd(url string) tea.Cmd {
 }
 
 type assetsFetchedMsg struct {
-	assets []github.Asset
-	app    config.App
-	err    error
+	assets  []github.Asset
+	app     config.App
+	release *github.Release
+	err     error
 }
 
 func fetchAssetsCmd(app config.App) tea.Cmd {
@@ -445,7 +458,10 @@ func fetchAssetsCmd(app config.App) tea.Cmd {
 			return assetsFetchedMsg{err: err}
 		}
 		
-		return assetsFetchedMsg{assets: assets, app: app, err: nil}
+		// Update app with latest release tag
+		app.Latest = rel.TagName
+		
+		return assetsFetchedMsg{assets: assets, app: app, release: rel, err: nil}
 	}
 }
 
@@ -482,6 +498,7 @@ type installFinishedMsg struct {
 type installedRecheckedMsg struct {
 	app     config.App
 	version string
+	latest  string
 }
 
 func recheckInstalledCmd(app config.App) tea.Cmd {
@@ -499,7 +516,7 @@ func recheckInstalledCmd(app config.App) tea.Cmd {
 				}
 			}
 		}
-		return installedRecheckedMsg{app: app, version: version}
+		return installedRecheckedMsg{app: app, version: version, latest: app.Latest}
 	}
 }
 
