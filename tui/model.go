@@ -18,6 +18,7 @@ import (
 	"github.com/tim/autonomix-cli/pkg/github"
 	"github.com/tim/autonomix-cli/pkg/installer"
 	"github.com/tim/autonomix-cli/pkg/manager"
+	"github.com/tim/autonomix-cli/pkg/packages"
 	"github.com/tim/autonomix-cli/pkg/system"
 )
 
@@ -281,7 +282,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 
 	case assetsFetchedMsg:
-		if msg.err != nil {
+		if msg.err != nil && len(msg.assets) == 0 {
 			m.err = msg.err
 			m.status = ""
 			return m, nil
@@ -293,6 +294,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		
+		// If there's an error but we have assets, it's a warning - show it as status
+		if msg.err != nil {
+			m.status = msg.err.Error()
+		} else {
+			m.status = ""
+		}
+		
 		items := []list.Item{}
 		for _, a := range msg.assets {
 			items = append(items, assetItem{asset: a})
@@ -300,7 +308,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assetList.SetItems(items)
 		m.assetList.Title = fmt.Sprintf("Select Asset for %s", msg.app.Name)
 		m.state = viewSelectAsset
-		m.status = ""
 		m.selectedApp = &msg.app
 		// Update the app's Latest field in config now that we fetched it
 		for idx, app := range m.config.Apps {
@@ -368,7 +375,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case installFinishedMsg:
 		if msg.err != nil {
 			m.status = ""
-			m.err = fmt.Errorf("installation failed: %w", msg.err)
+			m.err = fmt.Errorf("installation failed: %v", msg.err)
 		} else {
 			// Success! Re-check installed version and update config
 			m.err = nil
@@ -478,6 +485,18 @@ func fetchAssetsCmd(app config.App) tea.Cmd {
 		
 		assets, err := installer.GetCompatibleAssets(rel)
 		if err != nil {
+			// Try to get all assets as a fallback
+			allAssets := installer.GetAllAssets(rel)
+			if len(allAssets) > 0 {
+				// Return all assets with a warning in the error
+				app.Latest = rel.TagName
+				return assetsFetchedMsg{
+					assets: allAssets, 
+					app: app, 
+					release: rel, 
+					err: fmt.Errorf("warning: %v. Showing all available assets", err),
+				}
+			}
 			return assetsFetchedMsg{err: err}
 		}
 		
@@ -493,7 +512,21 @@ type assetItem struct {
 }
 
 func (i assetItem) Title() string       { return i.asset.Name }
-func (i assetItem) Description() string { return fmt.Sprintf("Size: %d bytes", i.asset.Size) }
+func (i assetItem) Description() string { 
+	pkgType := packages.DetectType(i.asset.Name)
+	sysType := system.GetSystemPreferredType()
+	
+	sizeStr := fmt.Sprintf("Size: %d bytes", i.asset.Size)
+	typeStr := fmt.Sprintf("Type: %s", packages.DisplayName(pkgType))
+	
+	// Warn if package type doesn't match system
+	warning := ""
+	if pkgType != sysType && sysType != packages.Unknown {
+		warning = " ⚠️  Not native to your system"
+	}
+	
+	return fmt.Sprintf("%s | %s%s", sizeStr, typeStr, warning)
+}
 func (i assetItem) FilterValue() string { return i.asset.Name }
 
 

@@ -35,8 +35,14 @@ func GetCompatibleAssets(release *github.Release) ([]github.Asset, error) {
 	archKeywords = append(archKeywords, "all", "noarch", "any")
 
 	var compatible []github.Asset
+	availableTypes := make(map[packages.Type]bool)
+	
 	for _, asset := range release.Assets {
 		detectedType := packages.DetectType(asset.Name)
+		if detectedType != packages.Unknown {
+			availableTypes[detectedType] = true
+		}
+		
 		if detectedType != sysType {
 			continue
 		}
@@ -73,7 +79,54 @@ func GetCompatibleAssets(release *github.Release) ([]github.Asset, error) {
 		}
 	}
 
+	// If still no compatible assets, provide helpful error message
+	if len(compatible) == 0 && len(availableTypes) > 0 {
+		var typeNames []string
+		for t := range availableTypes {
+			typeNames = append(typeNames, string(t))
+		}
+		return nil, fmt.Errorf("no %s packages found for %s. Available types: %s", 
+			sysType, arch, strings.Join(typeNames, ", "))
+	}
+
 	return compatible, nil
+}
+
+// GetAllAssets returns all installable assets from a release, regardless of system compatibility.
+// Useful as a fallback when no compatible assets are found.
+func GetAllAssets(release *github.Release) []github.Asset {
+	arch := runtime.GOARCH
+	archKeywords := []string{arch}
+	if arch == "amd64" {
+		archKeywords = append(archKeywords, "x86_64", "x64")
+	} else if arch == "arm64" {
+		archKeywords = append(archKeywords, "aarch64", "armv8")
+	}
+	archKeywords = append(archKeywords, "all", "noarch", "any")
+	
+	var all []github.Asset
+	for _, asset := range release.Assets {
+		detectedType := packages.DetectType(asset.Name)
+		// Only include recognized package types
+		if detectedType == packages.Unknown {
+			continue
+		}
+		
+		// Filter by arch
+		nameLower := strings.ToLower(asset.Name)
+		matchedArch := false
+		for _, kw := range archKeywords {
+			if strings.Contains(nameLower, kw) {
+				matchedArch = true
+				break
+			}
+		}
+		
+		if matchedArch {
+			all = append(all, asset)
+		}
+	}
+	return all
 }
 
 // DownloadAsset downloads the specified asset

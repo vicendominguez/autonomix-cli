@@ -119,16 +119,39 @@ func checkBinary(name string) (string, bool) {
 
 // GetSystemPreferredType returns the preferred package type for the running system
 func GetSystemPreferredType() packages.Type {
-	if _, err := exec.LookPath("dpkg"); err == nil {
+	// Use /etc/os-release for accurate detection
+	osID := getOSID()
+	
+	switch osID {
+	case "arch", "manjaro", "endeavouros", "garuda":
+		return packages.Pacman
+	case "debian", "ubuntu", "linuxmint", "pop", "elementary":
 		return packages.Deb
+	case "fedora", "rhel", "centos", "rocky", "almalinux":
+		return packages.Rpm
 	}
+	
+	// Fallback to checking for package managers
 	if _, err := exec.LookPath("pacman"); err == nil {
 		return packages.Pacman
+	}
+	if _, err := exec.LookPath("dpkg"); err == nil {
+		return packages.Deb
 	}
 	if _, err := exec.LookPath("rpm"); err == nil {
 		return packages.Rpm
 	}
 	return packages.Unknown
+}
+
+func getOSID() string {
+	// Read /etc/os-release and extract ID
+	cmd := exec.Command("sh", "-c", ". /etc/os-release && echo $ID")
+	out, err := cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(out))
+	}
+	return ""
 }
 
 
