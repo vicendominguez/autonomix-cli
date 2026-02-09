@@ -1,14 +1,14 @@
-# Autonomix CLI
+# Autonomix CLI v2
 
 Autonomix CLI is a terminal-based utility written in Go that allows you to easily install and manage applications directly from GitHub Releases.
 
 ## Features
 
 - **Install from GitHub**: Add any GitHub repository URL to track.
-- **Auto-Detection**: Recognizes `.deb`, `.rpm`, `.flatpak`, `.snap`, `.appimage`, and Arch packages.
+- **Multiple Install Methods**: Supports system packages (`.deb`, `.rpm`, `.flatpak`, `.snap`, `.appimage`, Arch packages), Homebrew (macOS), and direct binary installation.
 - **Smart Updates**: Checks for new releases on GitHub.
-- **System Integration**: Detects if the application is already installed on your system (dpkg, rpm, pacman, flatpak, snap) and shows the installed version.
-- **TUI**: Simple and easy-to-use Terminal User Interface built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+- **System Integration**: Detects if the application is already installed on your system and shows the installed version.
+- **CLI & TUI**: Full command-line interface with interactive Terminal User Interface built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
 ## Installation
 
@@ -33,19 +33,44 @@ sudo pacman -U autonomix-cli_*.pkg.tar.zst
 
 ## Usage
 
-Run the application:
+### Interactive TUI
+
+Run without arguments to launch the interactive interface:
 
 ```bash
 autonomix-cli
 ```
 
-### Controls
-
+**TUI Controls:**
 - **Start Typing**: To add a new GitHub repository URL.
 - **Enter**: Confirm adding a repo.
 - **u**: Check for updates for the selected app.
 - **d**: Delete/Remove an app from the list (stops tracking).
 - **q / Ctrl+C**: Quit.
+
+### Command Line Interface
+
+```bash
+# Add a repository (auto-detects best install method)
+autonomix-cli add <github-url>
+
+# Force specific install method
+autonomix-cli add --brew <github-url>    # Homebrew (macOS)
+autonomix-cli add --binary <github-url>  # Direct binary
+autonomix-cli add --system <github-url>  # System package
+
+# List tracked apps
+autonomix-cli list
+
+# Update an app
+autonomix-cli update <app-name>
+
+# Remove an app
+autonomix-cli remove <app-name>
+
+# Show version
+autonomix-cli --version
+```
 
 ## Configuration
 
